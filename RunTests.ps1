@@ -140,9 +140,38 @@ function Run-All-Browsers-With-Allure {
         Write-Host "Ejecutando pruebas en $browser con Allure..." -ForegroundColor Cyan
         $env:BROWSER = $browser
         $env:HEADLESS = "true"
+        # Ejecutar pruebas y permitir que cada ejecución genere su propio allure-results
         dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj
+
+        # Después de la ejecución, mover los resultados generados (si existen) a una carpeta por navegador
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $srcResults = Join-Path $PSScriptRoot "allure-results"
+        if (Test-Path $srcResults) {
+            $destDir = Join-Path $PSScriptRoot (Join-Path "allure-results-by-browser" "$browser-$timestamp")
+            Write-Host "Moviendo resultados de Allure a: $destDir" -ForegroundColor DarkCyan
+            New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+            Get-ChildItem -Path $srcResults -File | ForEach-Object {
+                Copy-Item -Path $_.FullName -Destination $destDir -Force
+            }
+            # Limpiar src to avoid mixing with next run
+            Get-ChildItem -Path $srcResults -File | ForEach-Object { Remove-Item -Path $_.FullName -Force }
+        } else {
+            Write-Host "No se encontraron resultados de Allure para $browser" -ForegroundColor Yellow
+        }
     }
     
+    # Consolidar todas las carpetas por navegador en una sola carpeta 'allure-results'
+    $finalResults = Join-Path $PSScriptRoot "allure-results"
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $finalResults
+    New-Item -ItemType Directory -Force -Path $finalResults | Out-Null
+
+    $splitRoot = Join-Path $PSScriptRoot "allure-results-by-browser"
+    if (Test-Path $splitRoot) {
+        Get-ChildItem -Path $splitRoot -Directory | ForEach-Object {
+            Copy-Item -Path (Join-Path $_.FullName "*") -Destination $finalResults -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     # Generar y abrir reporte consolidado
     Open-Allure-Report
 }

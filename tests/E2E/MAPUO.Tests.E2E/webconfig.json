@@ -1,0 +1,12 @@
+{
+  "ExecutionTimeoutMs": 30000,
+  "ElementWaitTimeoutMs": 10000,
+  "BrowserType": "chromium",
+  "Headless": false,
+  "Browsers": ["chromium", "firefox", "webkit"],
+  "RecordVideo": false,
+  "ScreenshotsBeforeStep": false,
+  "ScreenshotsAfterStep": false,
+  "ScreenshotsOnFailure": true,
+  "EvidenceBasePath": "TestResults/Evidence"
+}

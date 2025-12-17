@@ -28,4 +28,10 @@
     <ProjectReference Include="..\..\..\src\Infrastructure\MAPUO.Infrastructure\MAPUO.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="webconfig.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

@@ -39,8 +39,8 @@ public class TheSearchResultsAreVisible : IQuestion<bool>
     {
         var webAbility = actor.GetAbility<IWebAbility>();
         
-        // Verificar si el contenedor de resultados de búsqueda está visible
-        string resultsSelector = "#search";
+        // Verificar si los resultados de búsqueda están visibles (esperar por un título de resultado)
+        string resultsSelector = "h3";
         
         try
         {

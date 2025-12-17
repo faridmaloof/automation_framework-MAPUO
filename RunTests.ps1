@@ -26,8 +26,26 @@ function Run-Smoke-Tests {
 
 # Script 4: Ejecutar pruebas en todos los navegadores
 function Run-All-Browsers {
-    $browsers = @("chromium", "firefox", "webkit")
-    
+    # Intentar cargar configuración desde webconfig.json
+    $configPath = Join-Path $PSScriptRoot "tests\E2E\MAPUO.Tests.E2E\webconfig.json"
+    $browsers = @("chromium", "firefox", "webkit") # Valores por defecto
+
+    if (Test-Path $configPath) {
+        try {
+            $config = Get-Content $configPath | ConvertFrom-Json
+            if ($config.Browsers -and $config.Browsers.Count -gt 0) {
+                $browsers = $config.Browsers
+                Write-Host "Usando navegadores configurados: $($browsers -join ', ')" -ForegroundColor Green
+            } else {
+                Write-Host "Usando navegadores por defecto: $($browsers -join ', ')" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "Error al cargar configuración, usando valores por defecto: $($browsers -join ', ')" -ForegroundColor Red
+        }
+    } else {
+        Write-Host "Archivo de configuración no encontrado, usando valores por defecto: $($browsers -join ', ')" -ForegroundColor Yellow
+    }
+
     foreach ($browser in $browsers) {
         Write-Host ""
         Write-Host "Ejecutando pruebas en $browser..." -ForegroundColor Cyan
@@ -90,6 +108,45 @@ function Run-With-Allure {
     Open-Allure-Report
 }
 
+# Script 8.1: Ejecutar pruebas en múltiples navegadores con Allure
+function Run-All-Browsers-With-Allure {
+    Write-Host "Ejecutando pruebas en múltiples navegadores con reporte Allure..." -ForegroundColor Green
+    
+    # Limpiar resultados anteriores
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue allure-results
+    
+    # Intentar cargar configuración desde webconfig.json
+    $configPath = Join-Path $PSScriptRoot "tests\E2E\MAPUO.Tests.E2E\webconfig.json"
+    $browsers = @("chromium", "firefox", "webkit") # Valores por defecto
+
+    if (Test-Path $configPath) {
+        try {
+            $config = Get-Content $configPath | ConvertFrom-Json
+            if ($config.Browsers -and $config.Browsers.Count -gt 0) {
+                $browsers = $config.Browsers
+                Write-Host "Usando navegadores configurados: $($browsers -join ', ')" -ForegroundColor Green
+            } else {
+                Write-Host "Usando navegadores por defecto: $($browsers -join ', ')" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "Error al cargar configuración, usando valores por defecto: $($browsers -join ', ')" -ForegroundColor Red
+        }
+    } else {
+        Write-Host "Archivo de configuración no encontrado, usando valores por defecto: $($browsers -join ', ')" -ForegroundColor Yellow
+    }
+
+    foreach ($browser in $browsers) {
+        Write-Host ""
+        Write-Host "Ejecutando pruebas en $browser con Allure..." -ForegroundColor Cyan
+        $env:BROWSER = $browser
+        $env:HEADLESS = "true"
+        dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj
+    }
+    
+    # Generar y abrir reporte consolidado
+    Open-Allure-Report
+}
+
 # Script 9: Ejecutar solo una categoria especifica
 function Run-By-Category {
     param(
@@ -123,6 +180,7 @@ function Show-Help {
     Write-Host "  Run-E2E-Headless       - Ejecuta pruebas E2E en modo headless" -ForegroundColor White
     Write-Host "  Run-Smoke-Tests        - Ejecuta solo pruebas smoke" -ForegroundColor White
     Write-Host "  Run-All-Browsers       - Ejecuta pruebas en todos los navegadores" -ForegroundColor White
+    Write-Host "  Run-All-Browsers-With-Allure - Ejecuta pruebas en todos los navegadores con reporte Allure" -ForegroundColor White
     Write-Host "  Clean-Build            - Limpia y recompila la solucion" -ForegroundColor White
     Write-Host "  Open-Allure-Report     - Genera y abre reporte Allure" -ForegroundColor White
     Write-Host "  Run-With-Allure        - Ejecuta pruebas y genera reporte Allure" -ForegroundColor White

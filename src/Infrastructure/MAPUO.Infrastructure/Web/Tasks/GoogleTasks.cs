@@ -16,8 +16,8 @@ public class NavigateToGoogle : ITask
         var webAbility = actor.GetAbility<IWebAbility>();
         await webAbility.NavigateToAsync("https://www.google.com");
         
-        // Esperar a que la página cargue completamente
-        await Task.Delay(1000);
+        // Esperar a que el cuadro de búsqueda esté visible
+        await webAbility.WaitForSelectorAsync("textarea[name='q']");
     }
 }
 
@@ -43,7 +43,7 @@ public class SearchOnGoogle : ITask
         string searchBoxSelector = "textarea[name='q']";
         
         // Esperar a que el cuadro de búsqueda esté visible
-        await webAbility.WaitForSelectorAsync(searchBoxSelector, 10000);
+        await webAbility.WaitForSelectorAsync(searchBoxSelector);
         
         // Ingresar el término de búsqueda
         await webAbility.FillAsync(searchBoxSelector, _searchTerm);
@@ -51,8 +51,8 @@ public class SearchOnGoogle : ITask
         // Presionar Enter para buscar
         await webAbility.PressKeyAsync(searchBoxSelector, "Enter");
         
-        // Esperar a que se carguen los resultados
-        await Task.Delay(2000);
+        // Esperar a que se carguen los resultados (esperar por el contenedor de resultados)
+        await webAbility.WaitForSelectorAsync("#search");
     }
 }
 

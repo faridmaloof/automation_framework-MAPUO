@@ -49,8 +49,15 @@ public interface IWebAbility : IAbility
     /// Espera a que un elemento sea visible.
     /// </summary>
     /// <param name="selector">Selector del elemento</param>
-    /// <param name="timeoutMs">Timeout en milisegundos</param>
-    Task WaitForSelectorAsync(string selector, int timeoutMs = 30000);
+    /// <param name="timeoutMs">Timeout en milisegundos (opcional, usa configuración por defecto)</param>
+    Task WaitForSelectorAsync(string selector, int? timeoutMs = null);
+
+    /// <summary>
+    /// Espera a que la URL cambie o coincida con un patrón.
+    /// </summary>
+    /// <param name="urlPredicate">Predicado para la URL</param>
+    /// <param name="timeoutMs">Timeout en milisegundos (opcional, usa configuración por defecto)</param>
+    Task WaitForUrlAsync(Func<string, bool> urlPredicate, int? timeoutMs = null);
 
     /// <summary>
     /// Toma una captura de pantalla.

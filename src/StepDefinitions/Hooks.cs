@@ -2,6 +2,8 @@ using TechTalk.SpecFlow;
 using MAPUO.Core.Actors;
 using MAPUO.Core.Abilities;
 using MAPUO.Infrastructure.DI;
+using MAPUO.Infrastructure.Web;
+using System.Text.Json;
 
 namespace MAPUO.StepDefinitions;
 
@@ -14,22 +16,51 @@ public class Hooks
     [BeforeScenario]
     public void BeforeScenario(ScenarioContext scenarioContext)
     {
-        // Configurar el contenedor de DI
-        // Usar headless = false para ver el navegador (útil para debugging)
-        // Cambiar a true para ejecución en CI/CD
-        bool headless = bool.TryParse(Environment.GetEnvironmentVariable("HEADLESS"), out var h) ? h : false;
-        string browserType = Environment.GetEnvironmentVariable("BROWSER") ?? "chromium";
+        // Cargar configuración desde archivo JSON o variables de entorno
+        var webConfig = LoadWebConfig();
 
-        _serviceProvider = ContainerBootstrapper.Build(browserType, headless);
+        // Si no hay navegadores especificados, usar el navegador por defecto
+        if (webConfig.Browsers.Count == 0)
+        {
+            webConfig.Browsers.Add(webConfig.BrowserType);
+        }
+
+        // Para ejecución automática en múltiples navegadores, determinar el navegador actual
+        var currentBrowser = GetCurrentBrowser(webConfig);
         
-        // Crear el actor
-        _actor = ContainerBootstrapper.CreateActor(_serviceProvider, "TestUser");
+        // Configurar el contenedor de DI
+        _serviceProvider = ContainerBootstrapper.Build(webConfig, currentBrowser, webConfig.Headless);
+        
+        // Crear el actor con el nombre del escenario para evidencias
+        var scenarioName = scenarioContext.ScenarioInfo.Title.Replace(" ", "_");
+        _actor = ContainerBootstrapper.CreateActor(_serviceProvider, "TestUser", scenarioName, currentBrowser);
         
         // Almacenar el actor en el contexto del escenario
         scenarioContext.Set(_actor, "Actor");
         
         Console.WriteLine($"=== Iniciando escenario: {scenarioContext.ScenarioInfo.Title} ===");
-        Console.WriteLine($"Browser: {browserType}, Headless: {headless}");
+        Console.WriteLine($"Browser: {currentBrowser}, Headless: {webConfig.Headless}");
+        Console.WriteLine($"Execution Timeout: {webConfig.ExecutionTimeoutMs}ms, Element Wait Timeout: {webConfig.ElementWaitTimeoutMs}ms");
+        Console.WriteLine($"Evidencias - Video: {webConfig.RecordVideo}, Screenshots: Before={webConfig.ScreenshotsBeforeStep}, After={webConfig.ScreenshotsAfterStep}, Failure={webConfig.ScreenshotsOnFailure}");
+    }
+
+    private static string GetCurrentBrowser(WebConfig config)
+    {
+        // Verificar si hay un navegador especificado en variables de entorno (para ejecución paralela)
+        var browserEnv = Environment.GetEnvironmentVariable("CURRENT_BROWSER");
+        if (!string.IsNullOrEmpty(browserEnv) && config.Browsers.Contains(browserEnv))
+        {
+            return browserEnv;
+        }
+        
+        // Si solo hay un navegador, usarlo
+        if (config.Browsers.Count == 1)
+        {
+            return config.Browsers[0];
+        }
+        
+        // Por defecto, usar el primer navegador de la lista
+        return config.Browsers[0];
     }
 
     [AfterScenario]

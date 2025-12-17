@@ -14,10 +14,11 @@ MAPUO es un framework de automatización de pruebas profesional basado en **Clea
 - 🎯 **Patrón Screenplay**: Actor → Tareas → Preguntas para pruebas altamente mantenibles
 - 🏗️ **Clean Architecture**: Separación clara entre lógica de negocio e infraestructura
 - 🔄 **Dependency Injection**: Gestión de dependencias con Microsoft.Extensions.DependencyInjection
-- 🌐 **Multi-navegador**: Soporte para Chromium, Firefox y WebKit vía Playwright
+- 🌐 **Multi-navegador**: Soporte para Chromium, Firefox y WebKit vía Playwright con configuración flexible
 - 📝 **BDD/Gherkin**: Pruebas legibles con SpecFlow en español
 - 📊 **Allure Reports**: Reportes interactivos y profesionales
 - 🔧 **CI/CD Ready**: Configuración lista para GitHub Actions y Azure DevOps
+- ⚙️ **Configuración externa**: Timeouts, navegadores y modo headless configurables vía JSON/env
 - 📸 **Screenshots automáticos**: Captura de pantalla en fallos
 
 ---
@@ -111,6 +112,73 @@ dotnet test --filter "Category=smoke"
 # Ejecutar solo pruebas web
 dotnet test --filter "Category=web"
 ```
+
+---
+
+## 🌐 Configuración Multi-Navegador
+
+MAPUO soporta ejecución de pruebas en múltiples navegadores de forma flexible:
+
+### Configuración vía JSON
+
+Edita `tests/E2E/MAPUO.Tests.E2E/webconfig.json`:
+
+```json
+{
+  "BrowserType": "chromium",
+  "Headless": true,
+  "Browsers": ["chromium", "firefox", "webkit"]
+}
+```
+
+### Ejecución Multi-Navegador
+
+```powershell
+# Usar script PowerShell (lee configuración del JSON)
+Run-All-Browsers
+
+# O especificar navegador individual
+$env:BROWSER="firefox"
+dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj
+```
+
+### Configuración para CI/CD
+
+```yaml
+# En GitHub Actions
+- name: Run E2E Tests
+  run: |
+    dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj
+  env:
+    BROWSER: ${{ matrix.browser }}
+    HEADLESS: true
+  strategy:
+    matrix:
+      browser: [chromium, firefox, webkit]
+```
+
+---
+
+## ⚠️ Notas Importantes
+
+### Advertencias de Build
+
+- **.NET Preview**: El proyecto usa .NET 9.0 (versión preliminar). Esta advertencia desaparecerá cuando .NET 9.0 sea estable.
+- **Dependabot**: Las dependencias se actualizan automáticamente semanalmente vía GitHub Dependabot.
+
+### Actualizaciones Automáticas
+
+El proyecto está configurado con **Dependabot** para mantener las dependencias actualizadas:
+
+- 📅 **Frecuencia**: Semanal
+- 🔄 **Alcance**: Todos los paquetes NuGet
+- ✅ **Revisión**: PRs automáticas con asignación
+
+### Versiones de Playwright
+
+- ✅ **Versión actual**: 1.57.0 (actualizada automáticamente)
+- 🔄 **Actualizaciones**: Gestionadas por Dependabot
+- 📦 **Compatibilidad**: Todas las versiones del framework son compatibles
 
 ---
 
@@ -253,6 +321,72 @@ Los screenshots de fallos se guardan en `TestResults/Screenshots/`.
 
 ---
 
+## 📹 Evidencias y Capturas
+
+MAPUO soporta la generación automática de evidencias para mejorar el debugging y documentación de pruebas:
+
+### Configuración de Evidencias
+
+Edita `tests/E2E/MAPUO.Tests.E2E/webconfig.json`:
+
+```json
+{
+  "RecordVideo": false,
+  "ScreenshotsBeforeStep": false,
+  "ScreenshotsAfterStep": false,
+  "ScreenshotsOnFailure": true,
+  "EvidenceBasePath": "TestResults/Evidence"
+}
+```
+
+### Tipos de Evidencias
+
+- **Video**: Graba la ejecución completa del escenario (solo modo no-headless)
+- **Screenshots antes del paso**: Captura antes de cada acción (Navigate, Click, Fill)
+- **Screenshots después del paso**: Captura después de cada acción
+- **Screenshots en fallo**: Siempre activo, captura cuando un escenario falla
+
+### Variables de Entorno
+
+```powershell
+$env:RECORD_VIDEO="true"
+$env:SCREENSHOTS_BEFORE_STEP="true"
+$env:SCREENSHOTS_AFTER_STEP="true"
+$env:SCREENSHOTS_ON_FAILURE="true"
+$env:EVIDENCE_BASE_PATH="TestResults/Evidence"
+```
+
+### Estructura de Evidencias
+
+```
+TestResults/Evidence/
+├── Videos/
+│   ├── NombreEscenario/
+│   │   ├── chromium/
+│   │   └── firefox/
+├── Screenshots/
+│   ├── NombreEscenario/
+│   │   ├── chromium/
+│   │   │   ├── before_navigate/
+│   │   │   ├── after_click/
+│   │   │   └── failure/
+```
+
+### Ejecución con Evidencias
+
+```powershell
+# Ejecutar con video y screenshots
+$env:RECORD_VIDEO="true"
+$env:SCREENSHOTS_BEFORE_STEP="true"
+$env:SCREENSHOTS_AFTER_STEP="true"
+Run-E2E-Visible
+
+# Ejecutar en múltiples navegadores con evidencias
+Run-All-Browsers-With-Allure
+```
+
+---
+
 ## 🧪 Principios SOLID Aplicados
 
 1. **SRP (Single Responsibility)**: Cada clase tiene una única responsabilidad
@@ -265,10 +399,8 @@ Los screenshots de fallos se guardan en `TestResults/Screenshots/`.
 
 ## 📚 Documentación Adicional
 
-- [Guía de Contribución](docs/CONTRIBUTING.md)
 - [Arquitectura Detallada](docs/ARCHITECTURE.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Mejores Prácticas](docs/BEST_PRACTICES.md)
+- [Guía de Inicio Rápido](docs/QUICKSTART.md)
 
 ---
 

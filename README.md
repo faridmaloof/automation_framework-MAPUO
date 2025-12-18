@@ -49,6 +49,425 @@ MAPUO/
 
 ---
 
+## 📐 Arquitectura Detallada
+
+### 1. Capa Core (Dominio)
+
+**Responsabilidad**: Lógica de negocio y contratos (interfaces) independientes de cualquier framework o herramienta externa.
+
+```
+src/Core/MAPUO.Core/
+├── Actors/
+│   ├── IActor.cs           # Interfaz del actor
+│   └── Actor.cs            # Implementación del actor
+├── Tasks/
+│   └── ITask.cs            # Contrato para tareas
+├── Questions/
+│   └── IQuestion.cs        # Contrato para preguntas
+├── Abilities/
+│   ├── IAbility.cs         # Interfaz base de habilidades
+│   ├── IWebAbility.cs      # Contrato para habilidades web
+│   └── IApiAbility.cs      # Contrato para habilidades API
+└── Models/                 # Modelos de dominio (si es necesario)
+```
+
+**Principios aplicados**:
+- ✅ **DIP (Dependency Inversion)**: Solo interfaces, sin implementaciones concretas
+- ✅ **SRP (Single Responsibility)**: Cada interfaz tiene una única responsabilidad
+- ✅ **ISP (Interface Segregation)**: Interfaces específicas y cohesivas
+
+### 2. Capa Infrastructure (Implementación)
+
+**Responsabilidad**: Implementaciones concretas de las interfaces del Core utilizando herramientas específicas (Playwright, HttpClient, etc.).
+
+```
+src/Infrastructure/MAPUO.Infrastructure/
+├── Web/
+│   ├── PlaywrightWebAbility.cs    # Implementación con Playwright
+│   ├── Tasks/
+│   │   └── GoogleTasks.cs          # Tareas específicas de Google
+│   └── Questions/
+│       └── GoogleQuestions.cs      # Preguntas específicas de Google
+├── API/
+│   └── RestApiAbility.cs          # Implementación con HttpClient
+└── DI/
+    └── ContainerBootstrapper.cs    # Configuración de DI
+```
+
+### 3. Patrón Screenplay
+
+MAPUO implementa el **Patrón Screenplay** que permite escribir pruebas expresivas y mantenibles:
+
+```csharp
+// Actor con habilidades
+var actor = new Actor("Juan");
+actor.CanUseWebAbility(webAbility);
+
+// Ejecutar tareas
+await actor.ExecuteAsync(new LoginWithCredentials("user", "pass"));
+
+// Hacer preguntas
+var isLoggedIn = await actor.AsksForAsync(new IsUserLoggedIn());
+```
+
+**Beneficios del Patrón Screenplay**:
+- 🎭 **Lenguaje natural**: Las pruebas se leen como historias
+- 🔧 **Reutilización**: Tareas y preguntas se pueden reutilizar
+- 🧪 **Mantenibilidad**: Cambios en UI no afectan la lógica de negocio
+- 📈 **Escalabilidad**: Fácil agregar nuevas funcionalidades
+
+---
+
+## ⚡ Inicio Rápido (5 minutos)
+
+### 1. Prerrequisitos
+
+Asegúrate de tener instalado:
+
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [Git](https://git-scm.com/downloads)
+- [Visual Studio 2022](https://visualstudio.microsoft.com/) o [VS Code](https://code.visualstudio.com/)
+
+### 2. Clonar y Configurar
+
+```powershell
+# Clonar el repositorio
+git clone https://github.com/yourorg/MAPUO.git
+cd MAPUO
+
+# Cargar scripts de ejecución
+. .\RunTests.ps1
+
+# Ejecutar setup automático
+Setup-Project
+```
+
+Esto:
+- ✅ Restaura dependencias NuGet
+- ✅ Compila la solución
+- ✅ Instala navegadores Playwright (Chromium, Firefox, WebKit)
+
+### 3. Primera Ejecución
+
+```powershell
+# Ejecutar pruebas E2E con navegador visible
+Run-E2E-Visible
+```
+
+¡Listo! Deberías ver el navegador Chrome abrirse automáticamente.
+
+---
+
+## 🎯 Comandos de Ejecución
+
+| Comando | Descripción |
+|---------|-------------|
+| `Run-E2E-Visible` | Pruebas E2E con navegador visible (debugging) |
+| `Run-E2E-Headless` | Pruebas E2E modo headless (CI/CD) |
+| `Run-Smoke-Tests` | Solo pruebas críticas (smoke) |
+| `Run-All-Browsers` | Pruebas en Chromium + Firefox + WebKit |
+| `Run-All-Browsers-With-Allure` | Pruebas multi-navegador con reportes Allure |
+| `Run-With-Allure` | Pruebas con reporte Allure |
+| `Run-By-Category -Category smoke` | Pruebas por categoría específica |
+| `Clean-Build` | Limpiar y recompilar solución |
+| `Setup-Project` | Configuración inicial del proyecto |
+
+---
+
+## 📝 Escribiendo Pruebas
+
+### 1. Feature File (Gherkin)
+
+```gherkin
+# language: es
+Característica: Autenticación de Usuario
+
+  @smoke @login
+  Escenario: Login exitoso con credenciales válidas
+    Dado que el usuario está en la página de login
+    Cuando ingresa las credenciales válidas
+    Entonces debe ver el mensaje de bienvenida
+    Y debe ser redirigido al dashboard
+```
+
+### 2. Task (Tarea de negocio)
+
+```csharp
+public class LoginWithCredentials : ITask
+{
+    private readonly string _username;
+    private readonly string _password;
+
+    public string Description => $"Login como '{_username}'";
+
+    public LoginWithCredentials(string username, string password)
+    {
+        _username = username;
+        _password = password;
+    }
+
+    public async Task ExecuteAsync(IActor actor)
+    {
+        var web = actor.GetAbility<IWebAbility>();
+
+        await web.WaitForSelectorAsync("#username", 5000);
+        await web.FillAsync("#username", _username);
+        await web.FillAsync("#password", _password);
+        await web.ClickAsync("button[type='submit']");
+    }
+}
+```
+
+### 3. Question (Pregunta de validación)
+
+```csharp
+public class TheWelcomeMessageIsVisible : IQuestion<bool>
+{
+    public string Description => "¿El mensaje de bienvenida es visible?";
+
+    public async Task<bool> AnswerAsync(IActor actor)
+    {
+        var web = actor.GetAbility<IWebAbility>();
+
+        try
+        {
+            await web.WaitForSelectorAsync(".welcome-message", 3000);
+            return await web.IsVisibleAsync(".welcome-message");
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+```
+
+### 4. Step Definitions
+
+```csharp
+[Binding]
+public class LoginStepDefinitions
+{
+    private readonly IActor _actor;
+
+    public LoginStepDefinitions(ScenarioContext context)
+    {
+        _actor = context.Get<IActor>("Actor");
+    }
+
+    [Given(@"que el usuario está en la página de login")]
+    public async Task GivenUserIsOnLoginPage()
+    {
+        var web = _actor.GetAbility<IWebAbility>();
+        await web.NavigateToAsync("https://myapp.com/login");
+    }
+
+    [When(@"ingresa las credenciales válidas")]
+    public async Task WhenEntersValidCredentials()
+    {
+        await _actor.ExecuteAsync(
+            new LoginWithCredentials("admin@test.com", "Admin123!")
+        );
+    }
+
+    [Then(@"debe ver el mensaje de bienvenida")]
+    public async Task ThenShouldSeeWelcomeMessage()
+    {
+        var isVisible = await _actor.AsksForAsync(new TheWelcomeMessageIsVisible());
+        Assert.That(isVisible, Is.True, "Mensaje de bienvenida no visible");
+    }
+}
+```
+
+---
+
+## ⚙️ Configuración
+
+### Configuración de Navegadores
+
+Crear `tests/E2E/MAPUO.Tests.E2E/webconfig.json`:
+
+```json
+{
+  "Browsers": ["chromium", "firefox", "webkit"],
+  "DefaultTimeout": 30000,
+  "Headless": false,
+  "SlowMo": 0
+}
+```
+
+### Variables de Entorno
+
+```powershell
+# Configuración vía environment variables
+$env:BROWSER = "chromium"
+$env:HEADLESS = "true"
+$env:TEST_ENV = "CI"
+```
+
+---
+
+## 📊 Reportes Allure
+
+### Configuración Básica
+
+1. Instalar Allure CLI:
+```powershell
+npm install -g allure-commandline
+```
+
+2. Ejecutar pruebas con reportes:
+```powershell
+Run-With-Allure
+```
+
+3. Ver reporte:
+```powershell
+Open-Allure-Report
+```
+
+### Características de Allure
+
+- 📈 **Reportes interactivos**: Dashboards con gráficos y tendencias
+- 🏷️ **Categorización**: Tests organizados por severidad, tags, features
+- 📸 **Evidencias**: Screenshots automáticos en fallos
+- 🔍 **Búsqueda avanzada**: Filtrar por estado, duración, tags
+- 📊 **Estadísticas**: Métricas de ejecución y cobertura
+
+---
+
+## 🔧 CI/CD Integration
+
+### GitHub Actions
+
+El proyecto incluye pipelines listos para usar:
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 9.0.x
+      - name: Install Playwright
+        run: dotnet test --filter "Category=setup"
+      - name: Run Tests
+        run: dotnet test --filter "Category!=setup"
+      - name: Upload Allure Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: allure-results
+          path: allure-results/
+```
+
+### Azure DevOps
+
+```yaml
+# azure-pipelines.yml
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - task: UseDotNet@2
+    inputs:
+      version: '9.0.x'
+  - task: DotNetCoreCLI@2
+    inputs:
+      command: 'test'
+      projects: '**/*Tests.csproj'
+      arguments: '--configuration Release'
+```
+
+---
+
+## 🧪 Ejemplos de Uso
+
+### Login Simple
+
+```gherkin
+Característica: Autenticación
+
+  @smoke
+  Escenario: Login exitoso
+    Dado que el usuario está en la página de login
+    Cuando ingresa "admin@test.com" y "Admin123!"
+    Entonces debe ver el dashboard
+```
+
+### Búsqueda con Validación
+
+```gherkin
+Característica: Búsqueda de Productos
+
+  @regression
+  Escenario: Búsqueda exitosa
+    Dado que el usuario está en la página principal
+    Cuando busca "Laptop Dell XPS"
+    Entonces debe ver al menos 1 resultado
+    Y el primer resultado debe contener "Dell"
+```
+
+### Formulario Completo
+
+```gherkin
+Característica: Registro de Usuario
+
+  @e2e
+  Escenario: Registro exitoso
+    Dado que el usuario está en la página de registro
+    Cuando completa el formulario con datos válidos
+    Y hace clic en "Registrarse"
+    Entonces debe ver "Registro exitoso"
+    Y debe recibir un email de confirmación
+```
+
+---
+
+## 🤝 Contribuir
+
+1. Fork el proyecto
+2. Crear feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit cambios (`git commit -m 'Add AmazingFeature'`)
+4. Push al branch (`git push origin feature/AmazingFeature`)
+5. Abrir Pull Request
+
+---
+
+## 📄 Licencia
+
+Este proyecto está bajo la licencia MIT. Ver [LICENSE](LICENSE) para más detalles.
+
+---
+
+## 👥 Autores
+
+- **Equipo MAPUO** - *Desarrollo inicial*
+
+---
+
+## 🙏 Agradecimientos
+
+- Microsoft Playwright Team
+- SpecFlow Contributors
+- Clean Architecture Community
+- Screenplay Pattern Advocates
+
+---
+
+## 📞 Soporte
+
+Para reportar problemas o sugerencias, por favor crear un [issue](https://github.com/yourorg/MAPUO/issues).
+
 ## 🚀 Inicio Rápido
 
 ### Prerrequisitos

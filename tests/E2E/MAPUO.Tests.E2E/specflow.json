@@ -15,5 +15,13 @@
     "traceTimings": true,
     "minTracedDuration": "0:0:0.1",
     "stepDefinitionSkeletonStyle": "RegexAttribute"
-  }
+  },
+  "plugins": [
+    {
+      "name": "SpecFlow.Allure",
+      "parameters": {
+        "config": "allureConfig.json"
+      }
+    }
+  ]
 }

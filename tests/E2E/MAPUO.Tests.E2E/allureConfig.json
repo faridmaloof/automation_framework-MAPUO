@@ -1,8 +1,42 @@
 {
   "allure": {
-    "directory": "allure-results",
+    "directory": "TestResults/allure-results",
     "links": [
-      "https://github.com/yourorg/MAPUO"
-    ]
-  }
+      "https://github.com/faridmaloof/automation_framework-MAPUO"
+    ],
+    "title": "MAPUO - Test Automation Report"
+  },
+  "categories": [
+    {
+      "name": "Google Bot Protection",
+      "description": "Tests blocked by Google's anti-bot mechanisms",
+      "matchedStatuses": ["broken", "failed"],
+      "messageRegex": ".*sorry.*",
+      "traceRegex": ".*google\\.com/sorry.*"
+    },
+    {
+      "name": "Flaky Tests (Timeouts)",
+      "description": "Tests failing due to timeout issues",
+      "matchedStatuses": ["broken", "failed"],
+      "messageRegex": ".*[Tt]imeout.*"
+    },
+    {
+      "name": "Product Defects (Assertions)",
+      "description": "Business logic failures detected by assertions",
+      "matchedStatuses": ["failed"],
+      "traceRegex": ".*AssertionException.*"
+    },
+    {
+      "name": "Infrastructure Issues",
+      "description": "Network or connection related failures",
+      "matchedStatuses": ["broken"],
+      "messageRegex": ".*(connection|network|unable to connect).*"
+    },
+    {
+      "name": "Browser/Playwright Issues",
+      "description": "Browser automation framework errors",
+      "matchedStatuses": ["broken"],
+      "traceRegex": ".*(Playwright|Browser).*"
+    }
+  ]
 }

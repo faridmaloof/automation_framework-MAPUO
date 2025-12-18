@@ -108,72 +108,167 @@ function Run-With-Allure {
     Open-Allure-Report
 }
 
-# Script 8.1: Ejecutar pruebas en múltiples navegadores con Allure
+# Script 8.1: Ejecutar pruebas en múltiples navegadores con Allure (VERSIÓN PROFESIONAL)
 function Run-All-Browsers-With-Allure {
-    Write-Host "Ejecutando pruebas en múltiples navegadores con reporte Allure..." -ForegroundColor Green
+    Write-Host "`n=== MAPUO - Ejecución Multi-Browser con Allure ===" -ForegroundColor Green
+    Write-Host "Framework: Clean Architecture + Screenplay Pattern" -ForegroundColor DarkGray
+    Write-Host "Lider Tecnico: 30+ años experiencia Dev + QA`n" -ForegroundColor DarkGray
+    
+    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $repoRoot = $PSScriptRoot
     
     # Limpiar resultados anteriores
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue allure-results
+    Write-Host "[1/5] Limpiando resultados anteriores..." -ForegroundColor Cyan
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$repoRoot\allure-results"
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$repoRoot\allure-results-by-browser"
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$repoRoot\TestResults"
     
-    # Intentar cargar configuración desde webconfig.json
-    $configPath = Join-Path $PSScriptRoot "tests\E2E\MAPUO.Tests.E2E\webconfig.json"
-    $browsers = @("chromium", "firefox", "webkit") # Valores por defecto
+    # Cargar configuración
+    Write-Host "[2/5] Cargando configuración de navegadores..." -ForegroundColor Cyan
+    $configPath = Join-Path $repoRoot "tests\E2E\MAPUO.Tests.E2E\webconfig.json"
+    $browsers = @("chromium", "firefox", "webkit")
 
     if (Test-Path $configPath) {
         try {
             $config = Get-Content $configPath | ConvertFrom-Json
             if ($config.Browsers -and $config.Browsers.Count -gt 0) {
                 $browsers = $config.Browsers
-                Write-Host "Usando navegadores configurados: $($browsers -join ', ')" -ForegroundColor Green
-            } else {
-                Write-Host "Usando navegadores por defecto: $($browsers -join ', ')" -ForegroundColor Yellow
+                Write-Host "  ✓ Navegadores configurados: $($browsers -join ', ')" -ForegroundColor Green
             }
         } catch {
-            Write-Host "Error al cargar configuración, usando valores por defecto: $($browsers -join ', ')" -ForegroundColor Red
+            Write-Host "  ⚠ Error cargando config, usando default: $($browsers -join ', ')" -ForegroundColor Yellow
         }
-    } else {
-        Write-Host "Archivo de configuración no encontrado, usando valores por defecto: $($browsers -join ', ')" -ForegroundColor Yellow
     }
 
-    foreach ($browser in $browsers) {
-        Write-Host ""
-        Write-Host "Ejecutando pruebas en $browser con Allure..." -ForegroundColor Cyan
-        $env:BROWSER = $browser
-        $env:HEADLESS = "true"
-        # Ejecutar pruebas y permitir que cada ejecución genere su propio allure-results
-        dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj
+    # Preparar directorios
+    $allureFinalDir = Join-Path $repoRoot "allure-results"
+    $allureBrowserDir = Join-Path $repoRoot "allure-results-by-browser"
+    New-Item -ItemType Directory -Force -Path $allureFinalDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $allureBrowserDir | Out-Null
 
-        # Después de la ejecución, mover los resultados generados (si existen) a una carpeta por navegador
-        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-        $srcResults = Join-Path $PSScriptRoot "allure-results"
-        if (Test-Path $srcResults) {
-            $destDir = Join-Path $PSScriptRoot (Join-Path "allure-results-by-browser" "$browser-$timestamp")
-            Write-Host "Moviendo resultados de Allure a: $destDir" -ForegroundColor DarkCyan
-            New-Item -ItemType Directory -Force -Path $destDir | Out-Null
-            Get-ChildItem -Path $srcResults -File | ForEach-Object {
-                Copy-Item -Path $_.FullName -Destination $destDir -Force
+    # Ejecutar pruebas por navegador
+    Write-Host "[3/5] Ejecutando pruebas en múltiples navegadores...`n" -ForegroundColor Cyan
+    
+    $totalTests = 0
+    $totalPassed = 0
+    $totalFailed = 0
+    $browserResults = @{}
+
+    foreach ($browser in $browsers) {
+        Write-Host "  ┌─ Navegador: $($browser.ToUpper())" -ForegroundColor Magenta
+        Write-Host "  │  Configurando ambiente..." -ForegroundColor DarkGray
+        
+        $env:BROWSER = $browser
+        $env:CURRENT_BROWSER = $browser
+        $env:HEADLESS = "true"
+        $env:TEST_ENV = "CI"
+        
+        # Preparar directorio específico para este navegador
+        $browserResultDir = Join-Path $allureBrowserDir "$browser-$timestamp"
+        New-Item -ItemType Directory -Force -Path $browserResultDir | Out-Null
+        
+        # Configurar Allure para escribir en directorio específico
+        $env:ALLURE_RESULTS_DIRECTORY = $browserResultDir
+        $env:ALLURE_CONFIG = Join-Path $repoRoot "tests\E2E\MAPUO.Tests.E2E\allureConfig.json"
+        
+        Write-Host "  │  Ejecutando tests..." -ForegroundColor DarkGray
+        $testOutput = dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj `
+            --logger "console;verbosity=minimal" `
+            --logger "trx;LogFileName=$browser-results.trx" `
+            --results-directory "$repoRoot\TestResults\$browser" `
+            2>&1
+        
+        $exitCode = $LASTEXITCODE
+        
+        # Parsear resultados
+        $testOutput | ForEach-Object {
+            if ($_ -match "Total de pruebas:\s*(\d+)") { $tests = [int]$Matches[1] }
+            if ($_ -match "Correctas:\s*(\d+)") { $passed = [int]$Matches[1] }
+            if ($_ -match "Con errores:\s*(\d+)") { $failed = [int]$Matches[1] }
+        }
+        
+        if ($tests) {
+            $totalTests += $tests
+            $totalPassed += $passed
+            $totalFailed += $failed
+            $browserResults[$browser] = @{
+                Total = $tests
+                Passed = $passed
+                Failed = $failed
             }
-            # Limpiar src to avoid mixing with next run
-            Get-ChildItem -Path $srcResults -File | ForEach-Object { Remove-Item -Path $_.FullName -Force }
+            Write-Host "  │  Resultados: $passed/$tests ✓" -ForegroundColor $(if ($failed -eq 0) { "Green" } else { "Yellow" })
         } else {
-            Write-Host "No se encontraron resultados de Allure para $browser" -ForegroundColor Yellow
+            Write-Host "  │  ⚠ No se pudieron parsear resultados" -ForegroundColor Yellow
+        }
+        
+        # Copiar resultados Allure generados
+        if (Test-Path $browserResultDir) {
+            $jsonFiles = Get-ChildItem -Path $browserResultDir -Filter "*.json" -File
+            if ($jsonFiles.Count -gt 0) {
+                Write-Host "  │  ✓ Allure: $($jsonFiles.Count) archivos JSON generados" -ForegroundColor Green
+                Copy-Item -Path "$browserResultDir\*" -Destination $allureFinalDir -Recurse -Force
+            } else {
+                Write-Host "  │  ⚠ Allure: No se generaron archivos JSON" -ForegroundColor Yellow
+            }
+        }
+        
+        # Copiar screenshots
+        $screenshotDir = Join-Path $repoRoot "TestResults\Screenshots"
+        if (Test-Path $screenshotDir) {
+            $screenshots = Get-ChildItem -Path $screenshotDir -Filter "*.png" -File
+            if ($screenshots.Count -gt 0) {
+                Write-Host "  │  ✓ Screenshots: $($screenshots.Count) capturas" -ForegroundColor Green
+                $browserScreenshotDir = Join-Path $browserResultDir "screenshots"
+                New-Item -ItemType Directory -Force -Path $browserScreenshotDir | Out-Null
+                Copy-Item -Path "$screenshotDir\*" -Destination $browserScreenshotDir -Force
+            }
+        }
+        
+        Write-Host "  └─ Completado`n" -ForegroundColor DarkGray
+        
+        # Limpiar variables de entorno
+        Remove-Item Env:\ALLURE_RESULTS_DIRECTORY -ErrorAction SilentlyContinue
+        Remove-Item Env:\CURRENT_BROWSER -ErrorAction SilentlyContinue
+    }
+    
+    # Resumen de ejecución
+    Write-Host "[4/5] Resumen de ejecución:" -ForegroundColor Cyan
+    Write-Host "  ┌─────────────────────────────────────" -ForegroundColor DarkGray
+    foreach ($browser in $browserResults.Keys) {
+        $result = $browserResults[$browser]
+        $status = if ($result.Failed -eq 0) { "✓" } else { "⚠" }
+        $color = if ($result.Failed -eq 0) { "Green" } else { "Yellow" }
+        Write-Host "  │ $status $($browser.ToUpper().PadRight(10)) - $($result.Passed)/$($result.Total) tests" -ForegroundColor $color
+    }
+    Write-Host "  └─────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host "  Total: $totalTests tests | ✓ $totalPassed | ✗ $totalFailed`n" -ForegroundColor $(if ($totalFailed -eq 0) { "Green" } else { "Yellow" })
+    
+    # Validar y generar reporte Allure
+    Write-Host "[5/5] Generando reporte Allure..." -ForegroundColor Cyan
+    
+    $allureFiles = Get-ChildItem -Path $allureFinalDir -Filter "*-result.json" -File -ErrorAction SilentlyContinue
+    if ($allureFiles.Count -gt 0) {
+        Write-Host "  ✓ Encontrados $($allureFiles.Count) resultados Allure" -ForegroundColor Green
+        Write-Host "  Abriendo reporte interactivo...`n" -ForegroundColor Green
+        
+        try {
+            allure serve $allureFinalDir
+        } catch {
+            Write-Host "  ⚠ Error al abrir Allure. Verifica que esté instalado:" -ForegroundColor Yellow
+            Write-Host "    npm install -g allure-commandline`n" -ForegroundColor Gray
+        }
+    } else {
+        Write-Host "  ✗ No se generaron archivos Allure (*-result.json)" -ForegroundColor Red
+        Write-Host "  Diagnostico:" -ForegroundColor Yellow
+        Write-Host "    - Verifica que Allure.SpecFlowPlugin esté instalado" -ForegroundColor Gray
+        Write-Host "    - Revisa specflow.json para plugin Allure" -ForegroundColor Gray
+        Write-Host "    - Archivos encontrados en $($allureFinalDir):" -ForegroundColor Gray
+        Get-ChildItem -Path $allureFinalDir -File | ForEach-Object {
+            Write-Host "      - $($_.Name)" -ForegroundColor DarkGray
         }
     }
     
-    # Consolidar todas las carpetas por navegador en una sola carpeta 'allure-results'
-    $finalResults = Join-Path $PSScriptRoot "allure-results"
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $finalResults
-    New-Item -ItemType Directory -Force -Path $finalResults | Out-Null
-
-    $splitRoot = Join-Path $PSScriptRoot "allure-results-by-browser"
-    if (Test-Path $splitRoot) {
-        Get-ChildItem -Path $splitRoot -Directory | ForEach-Object {
-            Copy-Item -Path (Join-Path $_.FullName "*") -Destination $finalResults -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    # Generar y abrir reporte consolidado
-    Open-Allure-Report
+    Write-Host "`n=== Ejecución completada ===" -ForegroundColor Green
 }
 
 # Script 9: Ejecutar solo una categoria especifica

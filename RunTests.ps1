@@ -1,5 +1,6 @@
-# MAPUO Test Execution Scripts
-# Facilita la ejecucion de pruebas con diferentes configuraciones
+# MAPUO Test Execution Scripts - PROFESSIONAL VERSION
+# Framework: Clean Architecture + Screenplay Pattern
+# Lider Tecnico: 30+ años experiencia Dev + QA
 
 # Script 1: Ejecutar todas las pruebas E2E con navegador visible
 function Run-E2E-Visible {
@@ -17,68 +18,166 @@ function Run-E2E-Headless {
     dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj
 }
 
-# Script 3: Ejecutar solo pruebas smoke
-function Run-Smoke-Tests {
-    Write-Host "Ejecutando pruebas smoke..." -ForegroundColor Yellow
-    $env:HEADLESS = "false"
-    dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj --filter "Category=smoke"
-}
-
-# Script 4: Ejecutar pruebas en todos los navegadores
-function Run-All-Browsers {
-    # Intentar cargar configuración desde webconfig.json
-    $configPath = Join-Path $PSScriptRoot "tests\E2E\MAPUO.Tests.E2E\webconfig.json"
-    $browsers = @("chromium", "firefox", "webkit") # Valores por defecto
+# Script 8.1: Ejecutar pruebas en múltiples navegadores con Allure (VERSIÓN PROFESIONAL)
+function Run-All-Browsers-With-Allure {
+    Write-Host "`n=== MAPUO - Ejecucion Multi-Browser con Allure ===" -ForegroundColor Green
+    Write-Host "Framework: Clean Architecture + Screenplay Pattern" -ForegroundColor DarkGray
+    Write-Host "Lider Tecnico: 30+ años experiencia Dev + QA`n" -ForegroundColor DarkGray
+    
+    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $repoRoot = $PSScriptRoot
+    
+    # Definir directorio unificado de resultados (single source of truth)
+    $testResultsDir = Join-Path $repoRoot "TestResults"
+    $allureResultsDir = Join-Path $testResultsDir "allure-results"
+    $screenshotsDir = Join-Path $testResultsDir "screenshots"
+    $trxResultsDir = Join-Path $testResultsDir "trx"
+    
+    # Limpiar resultados anteriores
+    Write-Host "[1/5] Limpiando resultados anteriores..." -ForegroundColor Cyan
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $testResultsDir
+    
+    # Crear estructura de directorios unificada
+    New-Item -ItemType Directory -Force -Path $allureResultsDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $screenshotsDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $trxResultsDir | Out-Null
+    
+    # Cargar configuración
+    Write-Host "[2/5] Cargando configuracion de navegadores..." -ForegroundColor Cyan
+    $configPath = Join-Path $repoRoot "tests\E2E\MAPUO.Tests.E2E\webconfig.json"
+    $browsers = @("chromium", "firefox", "webkit")
 
     if (Test-Path $configPath) {
         try {
             $config = Get-Content $configPath | ConvertFrom-Json
             if ($config.Browsers -and $config.Browsers.Count -gt 0) {
                 $browsers = $config.Browsers
-                Write-Host "Usando navegadores configurados: $($browsers -join ', ')" -ForegroundColor Green
-            } else {
-                Write-Host "Usando navegadores por defecto: $($browsers -join ', ')" -ForegroundColor Yellow
+                Write-Host "  -> Navegadores configurados: $($browsers -join ', ')" -ForegroundColor Green
             }
         } catch {
-            Write-Host "Error al cargar configuración, usando valores por defecto: $($browsers -join ', ')" -ForegroundColor Red
+            Write-Host "  -> Error cargando config, usando default: $($browsers -join ', ')" -ForegroundColor Yellow
         }
-    } else {
-        Write-Host "Archivo de configuración no encontrado, usando valores por defecto: $($browsers -join ', ')" -ForegroundColor Yellow
     }
+
+    # Ejecutar pruebas por navegador
+    Write-Host "[3/5] Ejecutando pruebas en multiples navegadores...`n" -ForegroundColor Cyan
+    
+    $totalTests = 0
+    $totalPassed = 0
+    $totalFailed = 0
+    $browserResults = @{}
 
     foreach ($browser in $browsers) {
-        Write-Host ""
-        Write-Host "Ejecutando pruebas en $browser..." -ForegroundColor Cyan
+        Write-Host "  === Navegador: $($browser.ToUpper()) ===" -ForegroundColor Magenta
+        Write-Host "      Configurando ambiente..." -ForegroundColor DarkGray
+        
+        # Configurar variables de entorno para este navegador
         $env:BROWSER = $browser
+        $env:CURRENT_BROWSER = $browser
         $env:HEADLESS = "true"
-        dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj
+        $env:TEST_ENV = "CI"
+        $env:ALLURE_RESULTS_DIRECTORY = $allureResultsDir
+        $env:SCREENSHOTS_ON_FAILURE = "true"
+        $env:EVIDENCE_BASE_PATH = $testResultsDir
+        
+        Write-Host "      Ejecutando tests..." -ForegroundColor DarkGray
+        $browserTrxDir = Join-Path $trxResultsDir $browser
+        New-Item -ItemType Directory -Force -Path $browserTrxDir | Out-Null
+        
+        $testOutput = dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj `
+            --logger "console;verbosity=minimal" `
+            --logger "trx;LogFileName=$browser-$timestamp.trx" `
+            --results-directory $browserTrxDir `
+            --no-build `
+            2>&1
+        
+        # Parsear resultados
+        $tests = 0
+        $passed = 0
+        $failed = 0
+        $testOutput | ForEach-Object {
+            if ($_ -match "Total.*:\s*(\d+)") { $tests = [int]$Matches[1] }
+            if ($_ -match "Correctas.*:\s*(\d+)") { $passed = [int]$Matches[1] }
+            if ($_ -match "Con errores.*:\s*(\d+)") { $failed = [int]$Matches[1] }
+            if ($_ -match "Passed.*:\s*(\d+)") { $passed = [int]$Matches[1] }
+            if ($_ -match "Failed.*:\s*(\d+)") { $failed = [int]$Matches[1] }
+        }
+        
+        if ($tests -gt 0) {
+            $totalTests += $tests
+            $totalPassed += $passed
+            $totalFailed += $failed
+            $browserResults[$browser] = @{
+                Total = $tests
+                Passed = $passed
+                Failed = $failed
+            }
+            $checkmark = if ($failed -eq 0) { "OK" } else { "WARN" }
+            $color = if ($failed -eq 0) { "Green" } else { "Yellow" }
+            Write-Host "      Resultados: $passed/$tests - $checkmark" -ForegroundColor $color
+        } else {
+            Write-Host "      No se pudieron parsear resultados" -ForegroundColor Yellow
+        }
+        
+        # Verificar archivos Allure generados
+        $allureFiles = Get-ChildItem -Path $allureResultsDir -Filter "*-result.json" -File -ErrorAction SilentlyContinue
+        if ($allureFiles -and $allureFiles.Count -gt 0) {
+            Write-Host "      Allure: $($allureFiles.Count) archivos JSON generados" -ForegroundColor Green
+        } else {
+            Write-Host "      Allure: No se generaron archivos JSON" -ForegroundColor Yellow
+        }
+        
+        # Verificar screenshots
+        $screenshots = Get-ChildItem -Path $screenshotsDir -Filter "*.png" -File -ErrorAction SilentlyContinue
+        if ($screenshots -and $screenshots.Count -gt 0) {
+            Write-Host "      Screenshots: $($screenshots.Count) capturas" -ForegroundColor Green
+        }
+        
+        Write-Host "      Completado`n" -ForegroundColor DarkGray
+        
+        # Limpiar variables de entorno
+        Remove-Item Env:\ALLURE_RESULTS_DIRECTORY -ErrorAction SilentlyContinue
+        Remove-Item Env:\CURRENT_BROWSER -ErrorAction SilentlyContinue
+        Remove-Item Env:\EVIDENCE_BASE_PATH -ErrorAction SilentlyContinue
     }
-}
-
-# Script 5: Limpiar y reconstruir solucion
-function Clean-Build {
-    Write-Host "Limpiando solucion..." -ForegroundColor Magenta
-    dotnet clean
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue bin,obj,TestResults
     
-    Write-Host "Compilando solucion..." -ForegroundColor Magenta
-    dotnet build
-}
-
-# Script 6: Setup completo del proyecto
-function Setup-Project {
-    Write-Host "Configurando proyecto MAPUO..." -ForegroundColor Blue
+    # Resumen de ejecución
+    Write-Host "[4/5] Resumen de ejecucion:" -ForegroundColor Cyan
+    Write-Host "  =========================================" -ForegroundColor DarkGray
+    foreach ($browser in $browserResults.Keys) {
+        $result = $browserResults[$browser]
+        $status = if ($result.Failed -eq 0) { "OK  " } else { "WARN" }
+        $color = if ($result.Failed -eq 0) { "Green" } else { "Yellow" }
+        Write-Host "  $status $($browser.ToUpper().PadRight(10)) - $($result.Passed)/$($result.Total) tests" -ForegroundColor $color
+    }
+    Write-Host "  =========================================" -ForegroundColor DarkGray
+    Write-Host "  Total: $totalTests tests | OK: $totalPassed | FAIL: $totalFailed`n" -ForegroundColor $(if ($totalFailed -eq 0) { "Green" } else { "Yellow" })
     
-    Write-Host "1. Restaurando dependencias..." -ForegroundColor Blue
-    dotnet restore
+    # Validar y generar reporte Allure
+    Write-Host "[5/5] Generando reporte Allure..." -ForegroundColor Cyan
     
-    Write-Host "2. Compilando solucion..." -ForegroundColor Blue
-    dotnet build
+    $allureFiles = Get-ChildItem -Path $allureResultsDir -Filter "*-result.json" -File -ErrorAction SilentlyContinue
+    if ($allureFiles -and $allureFiles.Count -gt 0) {
+        Write-Host "  -> Encontrados $($allureFiles.Count) resultados Allure" -ForegroundColor Green
+        Write-Host "  -> Directorio unificado: $allureResultsDir" -ForegroundColor Green
+        Write-Host "  -> Abriendo reporte interactivo...`n" -ForegroundColor Green
+        
+        try {
+            allure serve $allureResultsDir
+        } catch {
+            Write-Host "  -> Error al abrir Allure. Verifica que este instalado:" -ForegroundColor Yellow
+            Write-Host "     npm install -g allure-commandline`n" -ForegroundColor Gray
+        }
+    } else {
+        Write-Host "  -> No se generaron archivos Allure (*-result.json)" -ForegroundColor Red
+        Write-Host "  -> Intentando convertir TRX a Allure...`n" -ForegroundColor Yellow
+        Convert-TrxToAllure -TrxDirectory $trxResultsDir -OutputDirectory $allureResultsDir
+    }
     
-    Write-Host "3. Instalando navegadores Playwright..." -ForegroundColor Blue
-    & ".\tests\E2E\MAPUO.Tests.E2E\bin\Debug\net9.0\playwright.ps1" install
-    
-    Write-Host "Setup completo!" -ForegroundColor Green
+    Write-Host "`n=== Resultados almacenados en: $testResultsDir ===" -ForegroundColor Green
+    Write-Host "  - Allure JSON: $allureResultsDir" -ForegroundColor Gray
+    Write-Host "  - Screenshots: $screenshotsDir" -ForegroundColor Gray
+    Write-Host "  - TRX files: $trxResultsDir`n" -ForegroundColor Gray
 }
 
 # Script 7: Generar y abrir reporte Allure
@@ -90,238 +189,144 @@ function Open-Allure-Report {
         npm install -g allure-commandline
     }
     
-    allure serve allure-results
-}
-
-# Script 8: Ejecutar pruebas con reporte Allure
-function Run-With-Allure {
-    Write-Host "Ejecutando pruebas con reporte Allure..." -ForegroundColor Green
-    
-    # Limpiar resultados anteriores
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue allure-results
-    
-    # Ejecutar pruebas
-    $env:HEADLESS = "true"
-    dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj
-    
-    # Generar y abrir reporte
-    Open-Allure-Report
-}
-
-# Script 8.1: Ejecutar pruebas en múltiples navegadores con Allure (VERSIÓN PROFESIONAL)
-function Run-All-Browsers-With-Allure {
-    Write-Host "`n=== MAPUO - Ejecución Multi-Browser con Allure ===" -ForegroundColor Green
-    Write-Host "Framework: Clean Architecture + Screenplay Pattern" -ForegroundColor DarkGray
-    Write-Host "Lider Tecnico: 30+ años experiencia Dev + QA`n" -ForegroundColor DarkGray
-    
-    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $repoRoot = $PSScriptRoot
-    
-    # Limpiar resultados anteriores
-    Write-Host "[1/5] Limpiando resultados anteriores..." -ForegroundColor Cyan
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$repoRoot\allure-results"
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$repoRoot\allure-results-by-browser"
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$repoRoot\TestResults"
-    
-    # Cargar configuración
-    Write-Host "[2/5] Cargando configuración de navegadores..." -ForegroundColor Cyan
-    $configPath = Join-Path $repoRoot "tests\E2E\MAPUO.Tests.E2E\webconfig.json"
-    $browsers = @("chromium", "firefox", "webkit")
-
-    if (Test-Path $configPath) {
-        try {
-            $config = Get-Content $configPath | ConvertFrom-Json
-            if ($config.Browsers -and $config.Browsers.Count -gt 0) {
-                $browsers = $config.Browsers
-                Write-Host "  ✓ Navegadores configurados: $($browsers -join ', ')" -ForegroundColor Green
-            }
-        } catch {
-            Write-Host "  ⚠ Error cargando config, usando default: $($browsers -join ', ')" -ForegroundColor Yellow
-        }
-    }
-
-    # Preparar directorios
-    $allureFinalDir = Join-Path $repoRoot "allure-results"
-    $allureBrowserDir = Join-Path $repoRoot "allure-results-by-browser"
-    New-Item -ItemType Directory -Force -Path $allureFinalDir | Out-Null
-    New-Item -ItemType Directory -Force -Path $allureBrowserDir | Out-Null
-
-    # Ejecutar pruebas por navegador
-    Write-Host "[3/5] Ejecutando pruebas en múltiples navegadores...`n" -ForegroundColor Cyan
-    
-    $totalTests = 0
-    $totalPassed = 0
-    $totalFailed = 0
-    $browserResults = @{}
-
-    foreach ($browser in $browsers) {
-        Write-Host "  ┌─ Navegador: $($browser.ToUpper())" -ForegroundColor Magenta
-        Write-Host "  │  Configurando ambiente..." -ForegroundColor DarkGray
-        
-        $env:BROWSER = $browser
-        $env:CURRENT_BROWSER = $browser
-        $env:HEADLESS = "true"
-        $env:TEST_ENV = "CI"
-        
-        # Preparar directorio específico para este navegador
-        $browserResultDir = Join-Path $allureBrowserDir "$browser-$timestamp"
-        New-Item -ItemType Directory -Force -Path $browserResultDir | Out-Null
-        
-        # Configurar Allure para escribir en directorio específico
-        $env:ALLURE_RESULTS_DIRECTORY = $browserResultDir
-        $env:ALLURE_CONFIG = Join-Path $repoRoot "tests\E2E\MAPUO.Tests.E2E\allureConfig.json"
-        
-        Write-Host "  │  Ejecutando tests..." -ForegroundColor DarkGray
-        $testOutput = dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj `
-            --logger "console;verbosity=minimal" `
-            --logger "trx;LogFileName=$browser-results.trx" `
-            --results-directory "$repoRoot\TestResults\$browser" `
-            2>&1
-        
-        $exitCode = $LASTEXITCODE
-        
-        # Parsear resultados
-        $testOutput | ForEach-Object {
-            if ($_ -match "Total de pruebas:\s*(\d+)") { $tests = [int]$Matches[1] }
-            if ($_ -match "Correctas:\s*(\d+)") { $passed = [int]$Matches[1] }
-            if ($_ -match "Con errores:\s*(\d+)") { $failed = [int]$Matches[1] }
-        }
-        
-        if ($tests) {
-            $totalTests += $tests
-            $totalPassed += $passed
-            $totalFailed += $failed
-            $browserResults[$browser] = @{
-                Total = $tests
-                Passed = $passed
-                Failed = $failed
-            }
-            Write-Host "  │  Resultados: $passed/$tests ✓" -ForegroundColor $(if ($failed -eq 0) { "Green" } else { "Yellow" })
-        } else {
-            Write-Host "  │  ⚠ No se pudieron parsear resultados" -ForegroundColor Yellow
-        }
-        
-        # Copiar resultados Allure generados
-        if (Test-Path $browserResultDir) {
-            $jsonFiles = Get-ChildItem -Path $browserResultDir -Filter "*.json" -File
-            if ($jsonFiles.Count -gt 0) {
-                Write-Host "  │  ✓ Allure: $($jsonFiles.Count) archivos JSON generados" -ForegroundColor Green
-                Copy-Item -Path "$browserResultDir\*" -Destination $allureFinalDir -Recurse -Force
-            } else {
-                Write-Host "  │  ⚠ Allure: No se generaron archivos JSON" -ForegroundColor Yellow
-            }
-        }
-        
-        # Copiar screenshots
-        $screenshotDir = Join-Path $repoRoot "TestResults\Screenshots"
-        if (Test-Path $screenshotDir) {
-            $screenshots = Get-ChildItem -Path $screenshotDir -Filter "*.png" -File
-            if ($screenshots.Count -gt 0) {
-                Write-Host "  │  ✓ Screenshots: $($screenshots.Count) capturas" -ForegroundColor Green
-                $browserScreenshotDir = Join-Path $browserResultDir "screenshots"
-                New-Item -ItemType Directory -Force -Path $browserScreenshotDir | Out-Null
-                Copy-Item -Path "$screenshotDir\*" -Destination $browserScreenshotDir -Force
-            }
-        }
-        
-        Write-Host "  └─ Completado`n" -ForegroundColor DarkGray
-        
-        # Limpiar variables de entorno
-        Remove-Item Env:\ALLURE_RESULTS_DIRECTORY -ErrorAction SilentlyContinue
-        Remove-Item Env:\CURRENT_BROWSER -ErrorAction SilentlyContinue
-    }
-    
-    # Resumen de ejecución
-    Write-Host "[4/5] Resumen de ejecución:" -ForegroundColor Cyan
-    Write-Host "  ┌─────────────────────────────────────" -ForegroundColor DarkGray
-    foreach ($browser in $browserResults.Keys) {
-        $result = $browserResults[$browser]
-        $status = if ($result.Failed -eq 0) { "✓" } else { "⚠" }
-        $color = if ($result.Failed -eq 0) { "Green" } else { "Yellow" }
-        Write-Host "  │ $status $($browser.ToUpper().PadRight(10)) - $($result.Passed)/$($result.Total) tests" -ForegroundColor $color
-    }
-    Write-Host "  └─────────────────────────────────────" -ForegroundColor DarkGray
-    Write-Host "  Total: $totalTests tests | ✓ $totalPassed | ✗ $totalFailed`n" -ForegroundColor $(if ($totalFailed -eq 0) { "Green" } else { "Yellow" })
-    
-    # Validar y generar reporte Allure
-    Write-Host "[5/5] Generando reporte Allure..." -ForegroundColor Cyan
-    
-    $allureFiles = Get-ChildItem -Path $allureFinalDir -Filter "*-result.json" -File -ErrorAction SilentlyContinue
-    if ($allureFiles.Count -gt 0) {
-        Write-Host "  ✓ Encontrados $($allureFiles.Count) resultados Allure" -ForegroundColor Green
-        Write-Host "  Abriendo reporte interactivo...`n" -ForegroundColor Green
-        
-        try {
-            allure serve $allureFinalDir
-        } catch {
-            Write-Host "  ⚠ Error al abrir Allure. Verifica que esté instalado:" -ForegroundColor Yellow
-            Write-Host "    npm install -g allure-commandline`n" -ForegroundColor Gray
-        }
+    $allureDir = "TestResults\allure-results"
+    if (Test-Path $allureDir) {
+        allure serve $allureDir
     } else {
-        Write-Host "  ✗ No se generaron archivos Allure (*-result.json)" -ForegroundColor Red
-        Write-Host "  Diagnostico:" -ForegroundColor Yellow
-        Write-Host "    - Verifica que Allure.SpecFlowPlugin esté instalado" -ForegroundColor Gray
-        Write-Host "    - Revisa specflow.json para plugin Allure" -ForegroundColor Gray
-        Write-Host "    - Archivos encontrados en $($allureFinalDir):" -ForegroundColor Gray
-        Get-ChildItem -Path $allureFinalDir -File | ForEach-Object {
-            Write-Host "      - $($_.Name)" -ForegroundColor DarkGray
-        }
+        Write-Host "No se encontro directorio de resultados Allure: $allureDir" -ForegroundColor Red
     }
-    
-    Write-Host "`n=== Ejecución completada ===" -ForegroundColor Green
 }
 
-# Script 9: Ejecutar solo una categoria especifica
-function Run-By-Category {
+# Script TRX to Allure Converter (OPCION B - BACKUP)
+function Convert-TrxToAllure {
     param(
         [Parameter(Mandatory=$true)]
-        [string]$Category
+        [string]$TrxDirectory,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$OutputDirectory
     )
     
-    Write-Host "Ejecutando pruebas de categoria: $Category" -ForegroundColor Yellow
-    $env:HEADLESS = "false"
-    dotnet test tests/E2E/MAPUO.Tests.E2E/MAPUO.Tests.E2E.csproj --filter "Category=$Category"
-}
-
-# Script 10: Ver estructura del proyecto
-function Show-Project-Structure {
-    Write-Host ""
-    Write-Host "Estructura del proyecto MAPUO:" -ForegroundColor Cyan
-    Write-Host ""
-    tree /F /A
+    Write-Host "  -> Convertidor TRX to Allure (OPCION B - Backup)" -ForegroundColor Cyan
+    
+    $trxFiles = Get-ChildItem -Path $TrxDirectory -Filter "*.trx" -File -Recurse -ErrorAction SilentlyContinue
+    
+    if (-not $trxFiles -or $trxFiles.Count -eq 0) {
+        Write-Host "  -> No se encontraron archivos TRX para convertir" -ForegroundColor Yellow
+        return
+    }
+    
+    Write-Host "  -> Encontrados $($trxFiles.Count) archivos TRX" -ForegroundColor Green
+    
+    $converted = 0
+    foreach ($trxFile in $trxFiles) {
+        try {
+            Write-Host "  -> Procesando: $($trxFile.Name)" -ForegroundColor Gray
+            
+            # Leer y parsear TRX XML
+            [xml]$trxXml = Get-Content $trxFile.FullName
+            
+            # Extraer informacion de tests
+            $testResults = $trxXml.TestRun.Results.UnitTestResult
+            
+            if ($testResults) {
+                foreach ($testResult in $testResults) {
+                    # Crear archivo JSON de Allure para cada test
+                    $uuid = [guid]::NewGuid().ToString()
+                    $testName = $testResult.testName
+                    $outcome = $testResult.outcome
+                    $duration = [TimeSpan]::Parse($testResult.duration).TotalMilliseconds
+                    $startTime = [DateTimeOffset]::Parse($testResult.startTime).ToUnixTimeMilliseconds()
+                    $endTime = [DateTimeOffset]::Parse($testResult.endTime).ToUnixTimeMilliseconds()
+                    
+                    # Determinar status de Allure
+                    $allureStatus = switch ($outcome) {
+                        "Passed" { "passed" }
+                        "Failed" { "failed" }
+                        "NotExecuted" { "skipped" }
+                        default { "broken" }
+                    }
+                    
+                    # Crear objeto JSON de Allure
+                    $allureResult = @{
+                        uuid = $uuid
+                        historyId = $uuid
+                        testCaseId = $uuid
+                        fullName = $testName
+                        name = $testName
+                        status = $allureStatus
+                        time = @{
+                            start = $startTime
+                            stop = $endTime
+                            duration = $duration
+                        }
+                        labels = @(
+                            @{ name = "framework"; value = "SpecFlow" }
+                            @{ name = "language"; value = "C#" }
+                            @{ name = "resultFormat"; value = "allure2" }
+                        )
+                        parameters = @()
+                        links = @()
+                        attachments = @()
+                    }
+                    
+                    # Añadir mensaje de error si fallo
+                    if ($outcome -eq "Failed" -and $testResult.Output.ErrorInfo) {
+                        $errorMessage = $testResult.Output.ErrorInfo.Message
+                        $stackTrace = $testResult.Output.ErrorInfo.StackTrace
+                        
+                        $allureResult.statusDetails = @{
+                            message = $errorMessage
+                            trace = $stackTrace
+                        }
+                    }
+                    
+                    # Guardar archivo JSON
+                    $jsonFileName = "$uuid-result.json"
+                    $jsonPath = Join-Path $OutputDirectory $jsonFileName
+                    $allureResult | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
+                }
+                
+                $converted++
+            }
+        }
+        catch {
+            Write-Host "  -> Error al procesar $($trxFile.Name): $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+    
+    if ($converted -gt 0) {
+        Write-Host "  -> Conversion completa: $converted archivos TRX convertidos" -ForegroundColor Green
+        Write-Host "  -> Abriendo reporte Allure desde archivos convertidos...`n" -ForegroundColor Green
+        
+        try {
+            allure serve $OutputDirectory
+        } catch {
+            Write-Host "  -> Error al abrir Allure. Verifica instalacion: npm install -g allure-commandline" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  -> No se pudieron convertir archivos TRX" -ForegroundColor Red
+    }
 }
 
 # Mensaje de ayuda
 function Show-Help {
     Write-Host ""
-    Write-Host "MAPUO Test Execution Scripts" -ForegroundColor Green
-    Write-Host "============================" -ForegroundColor Green
+    Write-Host "MAPUO Test Execution Scripts - PROFESSIONAL" -ForegroundColor Green
+    Write-Host "==========================================" -ForegroundColor Green
     Write-Host ""
     
     Write-Host "Comandos disponibles:" -ForegroundColor Yellow
-    Write-Host "  Setup-Project          - Configura el proyecto completo" -ForegroundColor White
-    Write-Host "  Run-E2E-Visible        - Ejecuta pruebas E2E con navegador visible" -ForegroundColor White
-    Write-Host "  Run-E2E-Headless       - Ejecuta pruebas E2E en modo headless" -ForegroundColor White
-    Write-Host "  Run-Smoke-Tests        - Ejecuta solo pruebas smoke" -ForegroundColor White
-    Write-Host "  Run-All-Browsers       - Ejecuta pruebas en todos los navegadores" -ForegroundColor White
-    Write-Host "  Run-All-Browsers-With-Allure - Ejecuta pruebas en todos los navegadores con reporte Allure" -ForegroundColor White
-    Write-Host "  Clean-Build            - Limpia y recompila la solucion" -ForegroundColor White
-    Write-Host "  Open-Allure-Report     - Genera y abre reporte Allure" -ForegroundColor White
-    Write-Host "  Run-With-Allure        - Ejecuta pruebas y genera reporte Allure" -ForegroundColor White
-    Write-Host "  Run-By-Category [cat]  - Ejecuta pruebas por categoria" -ForegroundColor White
-    Write-Host "  Show-Project-Structure - Muestra la estructura del proyecto" -ForegroundColor White
-    Write-Host "  Show-Help              - Muestra esta ayuda" -ForegroundColor White
-    Write-Host ""
-    
-    Write-Host "Ejemplos:" -ForegroundColor Yellow
-    Write-Host "  Run-E2E-Visible" -ForegroundColor Gray
-    Write-Host "  Run-By-Category -Category smoke" -ForegroundColor Gray
-    Write-Host "  Run-With-Allure" -ForegroundColor Gray
+    Write-Host "  Run-E2E-Visible                 - Ejecuta pruebas E2E con navegador visible" -ForegroundColor White
+    Write-Host "  Run-E2E-Headless                - Ejecuta pruebas E2E en modo headless" -ForegroundColor White
+    Write-Host "  Run-All-Browsers-With-Allure    - Ejecuta multi-browser con reporte Allure" -ForegroundColor White
+    Write-Host "  Open-Allure-Report              - Genera y abre reporte Allure" -ForegroundColor White
+    Write-Host "  Show-Help                       - Muestra esta ayuda" -ForegroundColor White
     Write-Host ""
 }
 
 # Mostrar ayuda al cargar el script
 Write-Host ""
-Write-Host "Script de ejecucion MAPUO cargado exitosamente!" -ForegroundColor Green
-Write-Host "Ejecuta Show-Help para ver los comandos disponibles." -ForegroundColor Cyan
+Write-Host "MAPUO - Framework Profesional de Automatizacion" -ForegroundColor Green
+Write-Host "Ejecuta Show-Help para ver comandos disponibles." -ForegroundColor Cyan
 Write-Host ""

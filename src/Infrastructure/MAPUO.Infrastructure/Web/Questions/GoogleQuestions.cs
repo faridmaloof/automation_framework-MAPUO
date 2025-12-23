@@ -39,8 +39,8 @@ public class TheSearchResultsAreVisible : IQuestion<bool>
     {
         var webAbility = actor.GetAbility<IWebAbility>();
         
-        // Verificar si los resultados de búsqueda están visibles (esperar por un título de resultado)
-        string resultsSelector = "h3";
+        // Verificar resultados visibles en DuckDuckGo (cada resultado es un artículo)
+        string resultsSelector = "article[data-testid='result']";
         
         try
         {

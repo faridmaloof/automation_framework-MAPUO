@@ -8,5 +8,7 @@
   "ScreenshotsBeforeStep": false,
   "ScreenshotsAfterStep": false,
   "ScreenshotsOnFailure": true,
-  "EvidenceBasePath": "TestResults/Evidence"
+  "EvidenceBasePath": "TestResults/Evidence",
+  "GenerateReport": true,
+  "Tags": []
 }

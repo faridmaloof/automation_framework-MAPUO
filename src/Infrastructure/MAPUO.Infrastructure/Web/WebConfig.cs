@@ -55,4 +55,14 @@ public class WebConfig
     /// Directorio base para guardar evidencias (videos, screenshots).
     /// </summary>
     public string EvidenceBasePath { get; set; } = "TestResults/Evidence";
+
+    /// <summary>
+    /// Si se debe generar el reporte (Allure u otro) durante la ejecución.
+    /// </summary>
+    public bool GenerateReport { get; set; } = true;
+
+    /// <summary>
+    /// Tags a ejecutar; si está vacío se ejecutan todos.
+    /// </summary>
+    public List<string> Tags { get; set; } = new();
 }

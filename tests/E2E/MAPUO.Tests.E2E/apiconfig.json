@@ -1,0 +1,12 @@
+{
+  "BaseUrl": "https://httpbin.org",
+  "TimeoutMs": 15000,
+  "AuthType": "None",
+  "BearerToken": "",
+  "BasicUser": "",
+  "BasicPassword": "",
+  "DefaultHeaders": {},
+  "GenerateReport": true,
+  "Tags": [],
+  "EvidenceBasePath": "TestResults/Evidence"
+}

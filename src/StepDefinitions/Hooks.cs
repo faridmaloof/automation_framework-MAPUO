@@ -6,21 +6,55 @@ using MAPUO.Infrastructure.Web;
 using System.Text.Json;
 using Allure.Net.Commons;
 using NUnit.Framework;
+using System.Linq;
 
 namespace MAPUO.StepDefinitions;
 
 [Binding]
 public class Hooks
 {
+    private readonly FeatureContext _featureContext;
     private IServiceProvider? _serviceProvider;
     private IActor? _actor;
     private static readonly AllureLifecycle _allure = AllureLifecycle.Instance;
+    private static WebConfig? _cachedConfig;
+    private static readonly object _configLock = new();
+
+    public Hooks(FeatureContext featureContext)
+    {
+        _featureContext = featureContext;
+    }
 
     [BeforeScenario]
     public void BeforeScenario(ScenarioContext scenarioContext)
     {
         // Cargar configuración desde archivo JSON o variables de entorno
         var webConfig = LoadWebConfig();
+
+        var allTags = (scenarioContext.ScenarioInfo.Tags ?? Array.Empty<string>())
+            .Concat(_featureContext.FeatureInfo.Tags ?? Array.Empty<string>());
+
+        // Filtro por tags configurados
+        if (webConfig.Tags.Any())
+        {
+            // Incluir tags de escenario y de característica para que los filtros funcionen en ambos niveles
+            var scenarioTags = allTags
+                .Select(t => t.Trim().TrimStart('@').ToLowerInvariant())
+                .ToList();
+            var required = webConfig.Tags
+                .Select(t => t.Trim().TrimStart('@').ToLowerInvariant());
+
+            if (!required.Any(scenarioTags.Contains))
+            {
+                Assert.Ignore($"Escenario omitido por filtro de tags: {string.Join(',', webConfig.Tags)}");
+            }
+        }
+
+        // Escenarios API se manejan en ApiHooks
+        if (allTags.Any(t => t.Equals("api", StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
 
         // Si no hay navegadores especificados, usar el navegador por defecto
         if (webConfig.Browsers.Count == 0)
@@ -52,21 +86,21 @@ public class Hooks
 
     private static string GetCurrentBrowser(WebConfig config)
     {
-        // Verificar si hay un navegador especificado en variables de entorno (para ejecución paralela)
-        var browserEnv = Environment.GetEnvironmentVariable("CURRENT_BROWSER");
-        if (!string.IsNullOrEmpty(browserEnv) && config.Browsers.Contains(browserEnv))
+        // Priorizar CURRENT_BROWSER o BROWSER si existen
+        var browserEnv = Environment.GetEnvironmentVariable("CURRENT_BROWSER") ?? Environment.GetEnvironmentVariable("BROWSER");
+        if (!string.IsNullOrWhiteSpace(browserEnv))
         {
-            return browserEnv;
+            return browserEnv.Trim();
         }
-        
-        // Si solo hay un navegador, usarlo
-        if (config.Browsers.Count == 1)
+
+        // Si hay lista configurada, usar el primero
+        if (config.Browsers.Count > 0)
         {
             return config.Browsers[0];
         }
-        
-        // Por defecto, usar el primer navegador de la lista
-        return config.Browsers[0];
+
+        // Fallback al BrowserType (o chromium por defecto)
+        return string.IsNullOrWhiteSpace(config.BrowserType) ? "chromium" : config.BrowserType;
     }
 
     [AfterScenario]
@@ -75,6 +109,15 @@ public class Hooks
         try
         {
             var webConfig = LoadWebConfig();
+
+            var allTags = (scenarioContext.ScenarioInfo.Tags ?? Array.Empty<string>())
+                .Concat(_featureContext.FeatureInfo.Tags ?? Array.Empty<string>());
+
+            // Escenarios API se manejan en ApiHooks
+            if (allTags.Any(t => t.Equals("api", StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
             var currentBrowser = GetCurrentBrowser(webConfig);
             
             // Tomar screenshot si está habilitado (falló el escenario y ScreenshotsOnFailure=true)
@@ -268,81 +311,144 @@ public class Hooks
     /// </summary>
     private static WebConfig LoadWebConfig()
     {
-        var config = new WebConfig();
-
-        // Intentar cargar desde archivo JSON
-        string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "webconfig.json");
-        if (File.Exists(configPath))
+        if (_cachedConfig != null)
         {
-            try
+            return _cachedConfig;
+        }
+
+        lock (_configLock)
+        {
+            if (_cachedConfig != null)
             {
-                string json = File.ReadAllText(configPath);
-                var loadedConfig = JsonSerializer.Deserialize<WebConfig>(json);
-                if (loadedConfig != null)
+                return _cachedConfig;
+            }
+
+            var config = new WebConfig();
+
+            // Intentar cargar desde archivo JSON en output (SpecFlow copia webconfig.json)
+            var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "webconfig.json");
+            if (File.Exists(configPath))
+            {
+                try
                 {
-                    config = loadedConfig;
+                    var json = File.ReadAllText(configPath);
+                    var loadedConfig = JsonSerializer.Deserialize<WebConfig>(json);
+                    if (loadedConfig != null)
+                    {
+                        config = loadedConfig;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error al cargar configuración desde {configPath}: {ex.Message}");
                 }
             }
-            catch (Exception ex)
+
+            // Overrides por variables de entorno
+            if (int.TryParse(Environment.GetEnvironmentVariable("EXECUTION_TIMEOUT_MS"), out var execTimeout))
             {
-                Console.WriteLine($"Error al cargar configuración desde {configPath}: {ex.Message}");
+                config.ExecutionTimeoutMs = execTimeout;
             }
-        }
 
-        // Sobrescribir con variables de entorno si están definidas
-        if (int.TryParse(Environment.GetEnvironmentVariable("EXECUTION_TIMEOUT_MS"), out var execTimeout))
-        {
-            config.ExecutionTimeoutMs = execTimeout;
-        }
-        if (int.TryParse(Environment.GetEnvironmentVariable("ELEMENT_WAIT_TIMEOUT_MS"), out var elementTimeout))
-        {
-            config.ElementWaitTimeoutMs = elementTimeout;
-        }
+            if (int.TryParse(Environment.GetEnvironmentVariable("ELEMENT_WAIT_TIMEOUT_MS"), out var elementTimeout))
+            {
+                config.ElementWaitTimeoutMs = elementTimeout;
+            }
 
-        // Configuración del navegador desde variables de entorno
-        var browserEnv = Environment.GetEnvironmentVariable("BROWSER");
-        if (!string.IsNullOrEmpty(browserEnv))
-        {
-            config.BrowserType = browserEnv;
-        }
+            var headlessEnv = Environment.GetEnvironmentVariable("HEADLESS");
+            if (bool.TryParse(headlessEnv, out var headless))
+            {
+                config.Headless = headless;
+            }
 
-        var headlessEnv = Environment.GetEnvironmentVariable("HEADLESS");
-        if (bool.TryParse(headlessEnv, out var headless))
-        {
-            config.Headless = headless;
-        }
+            var recordVideoEnv = Environment.GetEnvironmentVariable("RECORD_VIDEO");
+            if (bool.TryParse(recordVideoEnv, out var recordVideo))
+            {
+                config.RecordVideo = recordVideo;
+            }
 
-        // Configuración de evidencias desde variables de entorno
-        var recordVideoEnv = Environment.GetEnvironmentVariable("RECORD_VIDEO");
-        if (bool.TryParse(recordVideoEnv, out var recordVideo))
-        {
-            config.RecordVideo = recordVideo;
-        }
+            var screenshotsBeforeEnv = Environment.GetEnvironmentVariable("SCREENSHOTS_BEFORE_STEP");
+            if (bool.TryParse(screenshotsBeforeEnv, out var screenshotsBefore))
+            {
+                config.ScreenshotsBeforeStep = screenshotsBefore;
+            }
 
-        var screenshotsBeforeEnv = Environment.GetEnvironmentVariable("SCREENSHOTS_BEFORE_STEP");
-        if (bool.TryParse(screenshotsBeforeEnv, out var screenshotsBefore))
-        {
-            config.ScreenshotsBeforeStep = screenshotsBefore;
-        }
+            var screenshotsAfterEnv = Environment.GetEnvironmentVariable("SCREENSHOTS_AFTER_STEP");
+            if (bool.TryParse(screenshotsAfterEnv, out var screenshotsAfter))
+            {
+                config.ScreenshotsAfterStep = screenshotsAfter;
+            }
 
-        var screenshotsAfterEnv = Environment.GetEnvironmentVariable("SCREENSHOTS_AFTER_STEP");
-        if (bool.TryParse(screenshotsAfterEnv, out var screenshotsAfter))
-        {
-            config.ScreenshotsAfterStep = screenshotsAfter;
-        }
+            var screenshotsFailureEnv = Environment.GetEnvironmentVariable("SCREENSHOTS_ON_FAILURE");
+            if (bool.TryParse(screenshotsFailureEnv, out var screenshotsFailure))
+            {
+                config.ScreenshotsOnFailure = screenshotsFailure;
+            }
 
-        var screenshotsFailureEnv = Environment.GetEnvironmentVariable("SCREENSHOTS_ON_FAILURE");
-        if (bool.TryParse(screenshotsFailureEnv, out var screenshotsFailure))
-        {
-            config.ScreenshotsOnFailure = screenshotsFailure;
-        }
+            var evidencePathEnv = Environment.GetEnvironmentVariable("EVIDENCE_BASE_PATH");
+            if (!string.IsNullOrWhiteSpace(evidencePathEnv))
+            {
+                config.EvidenceBasePath = evidencePathEnv.Trim();
+            }
 
-        var evidencePathEnv = Environment.GetEnvironmentVariable("EVIDENCE_BASE_PATH");
-        if (!string.IsNullOrEmpty(evidencePathEnv))
-        {
-            config.EvidenceBasePath = evidencePathEnv;
-        }
+            var generateReportEnv = Environment.GetEnvironmentVariable("GENERATE_REPORT");
+            if (bool.TryParse(generateReportEnv, out var generateReport))
+            {
+                config.GenerateReport = generateReport;
+            }
 
-        return config;
+            var tagsEnv = Environment.GetEnvironmentVariable("TEST_TAGS");
+            if (!string.IsNullOrWhiteSpace(tagsEnv))
+            {
+                var list = tagsEnv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(t => !string.IsNullOrWhiteSpace(t))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (list.Count > 0)
+                {
+                    config.Tags = list;
+                }
+            }
+
+            // Browser/browsers
+            var browsersEnv = Environment.GetEnvironmentVariable("BROWSERS");
+            if (!string.IsNullOrWhiteSpace(browsersEnv))
+            {
+                var list = browsersEnv
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(b => !string.IsNullOrWhiteSpace(b))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (list.Count > 0)
+                {
+                    config.Browsers = list;
+                }
+            }
+
+            var browserEnv = Environment.GetEnvironmentVariable("BROWSER");
+            if (!string.IsNullOrWhiteSpace(browserEnv))
+            {
+                config.BrowserType = browserEnv.Trim();
+            }
+
+            // Normalizar lista de browsers si sigue vacía
+            if (config.Browsers == null)
+            {
+                config.Browsers = new List<string>();
+            }
+
+            if (config.Browsers.Count == 0)
+            {
+                config.Browsers.Add(string.IsNullOrWhiteSpace(config.BrowserType) ? "chromium" : config.BrowserType);
+            }
+
+            // Defaults finales
+            if (string.IsNullOrWhiteSpace(config.EvidenceBasePath))
+            {
+                config.EvidenceBasePath = "TestResults/Evidence";
+            }
+
+            return _cachedConfig = config;
+        }
     }
 }

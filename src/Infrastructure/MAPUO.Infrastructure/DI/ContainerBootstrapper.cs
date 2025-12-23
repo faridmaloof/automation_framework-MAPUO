@@ -1,7 +1,9 @@
+using System;
 using Microsoft.Extensions.DependencyInjection;
 using MAPUO.Core.Abilities;
 using MAPUO.Core.Actors;
 using MAPUO.Infrastructure.Web;
+using MAPUO.Infrastructure.API;
 
 namespace MAPUO.Infrastructure.DI;
 
@@ -42,6 +44,38 @@ public static class ContainerBootstrapper
         );
 
         return services.BuildServiceProvider();
+    }
+
+    public static IServiceProvider BuildApi(ApiConfig apiConfig)
+    {
+        var services = new ServiceCollection();
+
+        services.AddSingleton(apiConfig);
+        services.AddHttpClient("apiClient", client =>
+        {
+            if (!string.IsNullOrWhiteSpace(apiConfig.BaseUrl))
+            {
+                client.BaseAddress = new Uri(apiConfig.BaseUrl);
+            }
+            client.Timeout = TimeSpan.FromMilliseconds(apiConfig.TimeoutMs);
+        });
+
+        services.AddScoped<IApiAbility>(sp =>
+        {
+            var factory = sp.GetRequiredService<IHttpClientFactory>();
+            var client = factory.CreateClient("apiClient");
+            return new HttpApiAbility(apiConfig, client);
+        });
+
+        services.AddScoped<Func<string, IActor>>(sp => name => new Actor(name, sp));
+
+        return services.BuildServiceProvider();
+    }
+
+    public static IActor CreateApiActor(IServiceProvider serviceProvider, string actorName)
+    {
+        var factory = serviceProvider.GetRequiredService<Func<string, IActor>>();
+        return factory(actorName);
     }
 
     /// <summary>

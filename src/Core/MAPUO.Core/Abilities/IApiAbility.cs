@@ -52,4 +52,24 @@ public interface IApiAbility : IAbility
     /// </summary>
     /// <returns>Código de estado HTTP</returns>
     int GetLastStatusCode();
+
+    /// <summary>
+    /// Obtiene la URL final utilizada en la última petición.
+    /// </summary>
+    string? GetLastRequestUrl();
+
+    /// <summary>
+    /// Obtiene el método HTTP de la última petición.
+    /// </summary>
+    string? GetLastMethod();
+
+    /// <summary>
+    /// Obtiene el cuerpo enviado en la última petición (si aplica).
+    /// </summary>
+    string? GetLastRequestBody();
+
+    /// <summary>
+    /// Obtiene el contenido crudo de la última respuesta.
+    /// </summary>
+    string? GetLastResponseContent();
 }

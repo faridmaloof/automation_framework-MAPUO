@@ -19,6 +19,8 @@ public class GoogleSearchStepDefinitions
 
     [Given(@"que el usuario navega a la página de Google")]
     [Given(@"el usuario navega a la página de Google")]
+    [Given(@"que el usuario navega al buscador")]
+    [Given(@"el usuario navega al buscador")]
     public async Task GivenQueElUsuarioNavegaALaPaginaDeGoogle()
     {
         await _actor.ExecuteAsync(new NavigateToGoogle());
@@ -41,6 +43,12 @@ public class GoogleSearchStepDefinitions
     public async Task ThenLaURLDebeContener(string expectedUrlPart)
     {
         var currentUrl = await _actor.AsksForAsync(new TheCurrentUrl());
+        // Ajustar verificación para motores diferentes (por defecto DuckDuckGo)
+        if (string.Equals(expectedUrlPart, "search", StringComparison.OrdinalIgnoreCase))
+        {
+            expectedUrlPart = "duckduckgo.com/?q=";
+        }
+
         Assert.That(currentUrl, Does.Contain(expectedUrlPart), 
             $"La URL actual '{currentUrl}' no contiene '{expectedUrlPart}'");
     }

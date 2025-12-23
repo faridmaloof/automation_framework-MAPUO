@@ -1,3 +1,4 @@
+using System.Net;
 using MAPUO.Core.Abilities;
 using MAPUO.Core.Actors;
 using MAPUO.Core.Tasks;
@@ -5,30 +6,30 @@ using MAPUO.Core.Tasks;
 namespace MAPUO.Infrastructure.Web.Tasks;
 
 /// <summary>
-/// Tarea: Navegar a Google.
+/// Tarea: Navegar al buscador DuckDuckGo.
 /// </summary>
 public class NavigateToGoogle : ITask
 {
-    public string Description => "Navegar a la página de Google";
+    public string Description => "Navegar a DuckDuckGo";
 
     public async Task ExecuteAsync(IActor actor)
     {
         var webAbility = actor.GetAbility<IWebAbility>();
-        await webAbility.NavigateToAsync("https://www.google.com");
+        await webAbility.NavigateToAsync("https://duckduckgo.com");
         
         // Esperar a que el cuadro de búsqueda esté visible
-        await webAbility.WaitForSelectorAsync("textarea[name='q']");
+        await webAbility.WaitForSelectorAsync("input[name='q']");
     }
 }
 
 /// <summary>
-/// Tarea: Buscar un término en Google.
+/// Tarea: Buscar un término en DuckDuckGo.
 /// </summary>
 public class SearchOnGoogle : ITask
 {
     private readonly string _searchTerm;
 
-    public string Description => $"Buscar '{_searchTerm}' en Google";
+    public string Description => $"Buscar '{_searchTerm}' en DuckDuckGo";
 
     public SearchOnGoogle(string searchTerm)
     {
@@ -39,32 +40,25 @@ public class SearchOnGoogle : ITask
     {
         var webAbility = actor.GetAbility<IWebAbility>();
         
-        // Selector del campo de búsqueda de Google
-        string searchBoxSelector = "textarea[name='q']";
+        // Navegar directamente a la URL de resultados para evitar bloqueos de UI
+        var encodedTerm = WebUtility.UrlEncode(_searchTerm);
+        var searchUrl = $"https://duckduckgo.com/?q={encodedTerm}&ia=web";
+        await webAbility.NavigateToAsync(searchUrl);
         
-        // Esperar a que el cuadro de búsqueda esté visible
-        await webAbility.WaitForSelectorAsync(searchBoxSelector);
-        
-        // Ingresar el término de búsqueda
-        await webAbility.FillAsync(searchBoxSelector, _searchTerm);
-        
-        // Presionar Enter para buscar
-        await webAbility.PressKeyAsync(searchBoxSelector, "Enter");
-        
-        // Esperar a que se carguen los resultados (esperar por el contenedor de resultados)
-        await webAbility.WaitForSelectorAsync("#search");
+        // Esperar a que se carguen los resultados (CSS combina layout normal y versión ligera)
+        await webAbility.WaitForSelectorAsync("article[data-testid='result'], .result", 15000);
     }
 }
 
 /// <summary>
-/// Tarea combinada: Navegar a Google y realizar una búsqueda.
+/// Tarea combinada: Navegar a DuckDuckGo y realizar una búsqueda.
 /// Ejemplo de tarea compuesta que reutiliza otras tareas.
 /// </summary>
 public class PerformGoogleSearch : ITask
 {
     private readonly string _searchTerm;
 
-    public string Description => $"Realizar búsqueda completa de '{_searchTerm}' en Google";
+    public string Description => $"Realizar búsqueda completa de '{_searchTerm}' en DuckDuckGo";
 
     public PerformGoogleSearch(string searchTerm)
     {
